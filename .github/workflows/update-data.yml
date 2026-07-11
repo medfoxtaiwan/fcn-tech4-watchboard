@@ -1,0 +1,49 @@
+name: Daily FCN data update
+
+on:
+  schedule:
+    - cron: '30 22 * * 1-5'   # 美股收盤後：22:30 UTC = 美東 17:30 (EDT) / 18:30 (EST)，僅交易日
+  workflow_dispatch: {}        # 允許手動觸發
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch latest closes
+        run: python3 fetch_data.py || echo "::warning::fetch failed (Yahoo rate limit?) — keeping previous data.json"
+      - name: Commit data if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          if git diff --staged --quiet; then
+            echo "No data change."
+          else
+            git commit -m "chore: daily close update ($(date -u +%Y-%m-%d))"
+            git push
+          fi
+      - name: Freshness gate (job red if data stale)
+        run: |
+          python3 - <<'PY'
+          import json, datetime
+          d = json.load(open("data.json"))
+          maturity = datetime.date.fromisoformat(d["maturity_date"])
+          today = datetime.datetime.now(datetime.timezone.utc).date()
+          if today > maturity:
+              print(f"商品已於 {maturity} 到期，資料凍結屬正常。")
+              raise SystemExit(0)
+          latest = max(s["latest_date"] for s in d["stocks"].values())
+          lag = (today - datetime.date.fromisoformat(latest)).days
+          print(f"latest close={latest}, lag={lag}d (正常 0-1 天，連假最多 ~4 天)")
+          if lag > 5:
+              print(f"::error::STALE — 收盤資料已 {lag} 天未更新（>5）。Yahoo 端點可能失效，看板顯示值已過期。")
+              raise SystemExit(1)
+          print("freshness OK")
+          PY

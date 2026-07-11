@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FCN 四檔美股結構型商品追蹤看板</title>
+<style>
+:root {
+  --surface-1: #fcfcfb;
+  --page: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --series-nvda: #2a78d6;
+  --series-amd:  #1baf7a;
+  --series-tsla: #eda100;
+  --series-meta: #008300;
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+  --delta-up: #006300;
+  --delta-down: #d03b3b;
+  --good-wash: rgba(12,163,12,0.10);
+  --critical-wash: rgba(208,59,59,0.10);
+  --info-wash: rgba(42,120,214,0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-nvda: #3987e5;
+    --series-amd:  #199e70;
+    --series-tsla: #c98500;
+    --series-meta: #008300;
+    --delta-up: #0ca30c;
+    --good-wash: rgba(12,163,12,0.14);
+    --critical-wash: rgba(208,59,59,0.16);
+    --info-wash: rgba(57,135,229,0.12);
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--page);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 48px; }
+header h1 { font-size: 1.35rem; font-weight: 650; }
+.sub { color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px; }
+.sub .sep { color: var(--text-muted); margin: 0 6px; }
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.card h2 { font-size: 1rem; font-weight: 650; margin-bottom: 2px; }
+.card .desc { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px; }
+
+.banners { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.banner {
+  display: flex; align-items: baseline; gap: 10px;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 14px; font-size: 0.9rem;
+}
+.banner .icon { font-weight: 700; flex: none; }
+.banner.good { background: var(--good-wash); }
+.banner.good .icon { color: var(--status-good); }
+.banner.critical { background: var(--critical-wash); }
+.banner.critical .icon { color: var(--status-critical); }
+.banner.info { background: var(--info-wash); }
+.banner.info .icon { color: var(--series-nvda); }
+.banner b { font-weight: 650; }
+.banner .note { color: var(--text-secondary); font-size: 0.8rem; }
+
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+@media (max-width: 860px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 430px) { .tiles { grid-template-columns: 1fr; } }
+.tile {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 14px 12px;
+}
+.tile .label { display: flex; align-items: center; gap: 7px; font-size: 0.85rem; font-weight: 650; }
+.tile .key { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+.tile .value { font-size: 1.6rem; font-weight: 650; margin-top: 6px; }
+.tile .delta { font-size: 0.8rem; font-weight: 600; }
+.tile .delta.up { color: var(--delta-up); }
+.tile .delta.down { color: var(--delta-down); }
+.tile .delta .vs { color: var(--text-muted); font-weight: 400; }
+.meter { margin-top: 10px; }
+.meter .track { height: 6px; border-radius: 3px; position: relative; overflow: hidden; }
+.meter .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+.meter .caption { font-size: 0.75rem; color: var(--text-secondary); margin-top: 5px; }
+.tile .fine { font-size: 0.72rem; color: var(--text-muted); margin-top: 7px; }
+
+.chart-wrap { position: relative; }
+#chart { width: 100%; }
+#chart svg { display: block; }
+.tooltip {
+  position: absolute; pointer-events: none; display: none;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 0.78rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.12); min-width: 172px; z-index: 5;
+}
+.tooltip .t-date { color: var(--text-muted); margin-bottom: 4px; }
+.tooltip .t-row { display: flex; align-items: center; gap: 7px; padding: 1px 0; }
+.tooltip .t-key { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+.tooltip .t-name { color: var(--text-secondary); flex: none; width: 44px; }
+.tooltip .t-val { font-weight: 650; margin-left: auto; font-variant-numeric: tabular-nums; }
+.tooltip .t-pct { color: var(--text-secondary); font-weight: 400; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 0.8rem; color: var(--text-secondary); }
+.legend .item { display: flex; align-items: center; gap: 6px; }
+.legend .key { width: 14px; height: 3px; border-radius: 2px; }
+.legend .refkey { width: 14px; height: 0; border-top: 1px solid var(--baseline); }
+.legend .refkey.crit { border-top-color: var(--status-critical); }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--text-muted); font-weight: 550; font-size: 0.76rem; }
+th:first-child, td:first-child { text-align: left; }
+td { font-variant-numeric: tabular-nums; }
+td.name { font-weight: 650; }
+td .key-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
+.empty-state { text-align: center; color: var(--text-secondary); padding: 18px 10px; font-size: 0.88rem; }
+.empty-state .big { color: var(--status-good); font-weight: 650; }
+.scroll-x { overflow-x: auto; }
+details { margin-top: 10px; }
+summary { cursor: pointer; color: var(--text-secondary); font-size: 0.85rem; padding: 4px 0; }
+.terms { font-size: 0.82rem; color: var(--text-secondary); }
+.terms table td, .terms table th { text-align: right; }
+.terms table td:first-child, .terms table th:first-child { text-align: left; }
+footer { margin-top: 20px; color: var(--text-muted); font-size: 0.75rem; line-height: 1.7; }
+.err { color: var(--status-critical); padding: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>FCN 四檔美股結構型商品追蹤看板</h1>
+    <div class="sub" id="subline">載入中…</div>
+  </header>
+
+  <div class="banners" id="banners"></div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h2>股價走勢 vs 下限價（以進場價 = 100% 指數化）</h2>
+    <div class="desc">單一縱軸；紅線 65% = 下限價（下檔保護）、灰線 100% = 進場價（提前出場觀察價）。橫軸涵蓋整個商品存續期至 2026-11-27 到期。</div>
+    <div class="chart-wrap">
+      <div id="chart" tabindex="0" aria-label="四檔股價指數化走勢圖，可用左右方向鍵瀏覽每日數值"></div>
+      <div class="tooltip" id="tooltip"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="card">
+    <h2>跌破紀錄（收盤價 &lt; 下限價）</h2>
+    <div class="desc">依你的規則：以每日收盤價判定，每一次跌破都逐日記錄。盤中低點曾觸及但收盤收回者另列於下方註記。</div>
+    <div id="breach-area"></div>
+    <div id="intraday-note" class="desc" style="margin-top:10px; margin-bottom:0;"></div>
+  </div>
+
+  <div class="card">
+    <h2>四檔現況總表</h2>
+    <div class="scroll-x"><table id="summary"></table></div>
+    <details>
+      <summary>每日收盤明細（進場日起全部交易日）</summary>
+      <div class="scroll-x"><table id="daily"></table></div>
+    </details>
+  </div>
+
+  <div class="card terms">
+    <h2>商品條件</h2>
+    <div class="desc">來源：銀行試算表；實際以公開說明書為準。</div>
+    <div class="scroll-x"><table id="terms-table"></table></div>
+    <div style="margin-top:10px;">
+      提前出場（Knock-Out, KO）：進場後滿一個月（2026-04-27 起），所有標的皆曾漲過各自進場價（100%）→ 提前出場拿回本金＋配息。<br>
+      下限價（Knock-In, KI，下檔保護）：存續期間任一標的跌破進場價 65% → 下檔保護失效，到期才有接股票可能。<br>
+      執行價（換股價，65%）：若曾跌破下限價，到期時表現最差標的低於執行價 → 以執行價轉換該檔股票。
+    </div>
+  </div>
+
+  <footer>
+    資料來源：Yahoo Finance 日線收盤價（美東時間）。本頁每日自動更新一次；價格未經發行機構驗證。<br>
+    跌破判定採「收盤價」；發行機構實際障礙觀察方式（收盤/盤中、觀察頻率）以公開說明書為準。含息損益兩平價為銀行估值。<br>
+    本看板僅供個人參考，不構成投資建議。<span id="gen-time"></span>
+  </footer>
+</div>
+
+<script>
+const SERIES = [
+  { t: "NVDA", css: "--series-nvda" },
+  { t: "AMD",  css: "--series-amd"  },
+  { t: "TSLA", css: "--series-tsla" },
+  { t: "META", css: "--series-meta" },
+];
+const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const fmt2 = x => x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt1 = x => x.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+};
+
+let DATA = null;
+
+fetch("data.json?t=" + Date.now())
+  .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+  .then(d => { DATA = d; renderAll(); })
+  .catch(e => {
+    document.getElementById("subline").textContent = "";
+    document.querySelector(".wrap").insertAdjacentElement("beforeend",
+      el("div", "err", "data.json 載入失敗：" + e.message));
+  });
+
+function renderAll() {
+  renderHeader(); renderBanners(); renderTiles();
+  renderChart(); renderBreaches(); renderSummary(); renderDaily(); renderTerms();
+  new ResizeObserver(() => renderChart()).observe(document.getElementById("chart"));
+}
+
+function latestDate() {
+  return Object.values(DATA.stocks).map(s => s.latest_date).sort().at(-1);
+}
+
+function renderHeader() {
+  const sub = document.getElementById("subline");
+  sub.textContent = "";
+  const parts = [
+    "進場 " + DATA.entry_date, "到期 " + DATA.maturity_date,
+    "距到期 " + DATA.days_to_maturity + " 天",
+    "最新收盤 " + latestDate(),
+  ];
+  parts.forEach((p, i) => {
+    if (i) sub.appendChild(el("span", "sep", "·"));
+    sub.appendChild(document.createTextNode(p));
+  });
+  document.getElementById("gen-time").textContent = " 資料產生時間：" + DATA.generated_at_utc + "。";
+}
+
+function renderBanners() {
+  const box = document.getElementById("banners");
+  box.textContent = "";
+  const total = DATA.total_close_breaches;
+  if (total === 0) {
+    const b = el("div", "banner good");
+    b.appendChild(el("span", "icon", "✓"));
+    const s = el("span");
+    s.appendChild(el("b", null, "下檔保護完好："));
+    s.appendChild(document.createTextNode("自進場日起，四檔皆無任何收盤跌破下限價（65%）。"));
+    b.appendChild(s);
+    box.appendChild(b);
+  } else {
+    const hit = Object.entries(DATA.stocks).filter(([, s]) => s.ever_breached).map(([t]) => t);
+    const b = el("div", "banner critical");
+    b.appendChild(el("span", "icon", "✕"));
+    const s = el("span");
+    s.appendChild(el("b", null, "已跌破下限價："));
+    s.appendChild(document.createTextNode(
+      hit.join("、") + " 曾收盤跌破，共 " + total + " 個交易日。下檔保護失效，到期時以最差標的 vs 執行價（65%）決定是否接股。"));
+    b.appendChild(s);
+    box.appendChild(b);
+  }
+  if (DATA.ko_condition_met) {
+    const b = el("div", "banner info");
+    b.appendChild(el("span", "icon", "ℹ"));
+    const s = el("span");
+    s.appendChild(el("b", null, "提前出場條件觀察："));
+    s.appendChild(document.createTextNode(
+      "滿一個月（" + DATA.ko_start_date + "）起四檔皆已有收盤價高於進場價（最晚達成 " +
+      DATA.ko_met_date + "）。依試算表「皆曾漲過」文字可能已符合提前出場，"));
+    const n = el("span", "note", "實際是否出場以發行機構之觀察日認定與公開說明書為準。");
+    s.appendChild(n);
+    b.appendChild(s);
+    box.appendChild(b);
+  }
+}
+
+function bufferSeverity(s) {
+  if (s.ever_breached) return { color: "--status-critical", label: "已跌破" };
+  const buf = s.buffer_to_barrier_pct;
+  if (buf < 15) return { color: "--status-serious", label: "貼近下限" };
+  if (buf < 30) return { color: "--status-warning", label: "注意" };
+  return { color: "--status-good", label: "安全" };
+}
+
+function renderTiles() {
+  const box = document.getElementById("tiles");
+  box.textContent = "";
+  const SCALE_MAX = 80; // 緩衝比例尺 0–80%，四卡共用
+  SERIES.forEach(({ t, css }) => {
+    const s = DATA.stocks[t];
+    const tile = el("div", "tile");
+    const label = el("div", "label");
+    const key = el("span", "key"); key.style.background = cssVar(css);
+    label.appendChild(key);
+    label.appendChild(document.createTextNode(t));
+    tile.appendChild(label);
+    tile.appendChild(el("div", "value", fmt2(s.latest_close)));
+    const up = s.vs_entry_pct >= 0;
+    const delta = el("div", "delta " + (up ? "up" : "down"));
+    delta.appendChild(document.createTextNode((up ? "▲ +" : "▼ ") + fmt1(s.vs_entry_pct) + "% "));
+    delta.appendChild(el("span", "vs", "vs 進場價 " + fmt2(s.entry)));
+    tile.appendChild(delta);
+
+    const sev = bufferSeverity(s);
+    const meter = el("div", "meter");
+    const track = el("div", "track");
+    const sevHex = cssVar(sev.color);
+    track.style.background = sevHex + "26"; /* 同色淡階軌道 */
+    const fill = el("div", "fill");
+    fill.style.width = Math.max(0, Math.min(100, s.buffer_to_barrier_pct / SCALE_MAX * 100)) + "%";
+    fill.style.background = sevHex;
+    track.appendChild(fill);
+    meter.appendChild(track);
+    const cap = el("div", "caption");
+    cap.textContent = s.ever_breached
+      ? "已跌破下限價 " + s.close_breaches.length + " 次（詳下表）"
+      : "再跌 " + fmt1(s.buffer_to_barrier_pct) + "% 觸及下限價 " + fmt2(s.barrier) + "（" + sev.label + "）";
+    meter.appendChild(cap);
+    tile.appendChild(meter);
+
+    tile.appendChild(el("div", "fine",
+      "期間最低收盤 " + fmt2(s.min_close.close) + "（" + s.min_close.date + "）· 收盤跌破 " +
+      s.close_breaches.length + " 次"));
+    box.appendChild(tile);
+  });
+}
+
+/* ---------- 主圖 ---------- */
+let chartState = null;
+
+function renderChart() {
+  const host = document.getElementById("chart");
+  const W = host.clientWidth;
+  if (!W || !DATA) return;
+  host.textContent = "";
+
+  const isNarrow = W < 560;
+  const H = isNarrow ? 320 : 400;
+  const M = { l: 40, r: isNarrow ? 86 : 96, t: 14, b: 30 };
+  const pw = W - M.l - M.r, ph = H - M.t - M.b;
+
+  const t0 = new Date(DATA.entry_date + "T00:00:00Z").getTime();
+  const t1 = new Date(DATA.maturity_date + "T00:00:00Z").getTime();
+  const x = d => M.l + (new Date(d + "T00:00:00Z").getTime() - t0) / (t1 - t0) * pw;
+
+  const allPct = [];
+  SERIES.forEach(({ t }) => {
+    const s = DATA.stocks[t];
+    s.series.forEach(r => allPct.push(r.close / s.entry * 100));
+  });
+  const yMin = Math.min(55, Math.floor(Math.min(...allPct) - 5));
+  const yMax = Math.max(120, Math.ceil(Math.max(...allPct) + 10));
+  const y = v => M.t + (yMax - v) / (yMax - yMin) * ph;
+
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const add = (parent, tag, attrs) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    parent.appendChild(n); return n;
+  };
+
+  /* 網格與縱軸 */
+  const step = yMax - yMin > 200 ? 50 : 25;
+  for (let v = Math.ceil(yMin / step) * step; v <= yMax; v += step) {
+    if (v === 100 || v === 65) continue;
+    add(svg, "line", { x1: M.l, x2: M.l + pw, y1: y(v), y2: y(v), stroke: cssVar("--grid"), "stroke-width": 1 });
+    const tx = add(svg, "text", { x: M.l - 8, y: y(v) + 4, "text-anchor": "end", "font-size": 11, fill: cssVar("--text-muted") });
+    tx.textContent = v + "%";
+    tx.style.fontVariantNumeric = "tabular-nums";
+  }
+  /* 參考線：100% 進場、65% 下限 */
+  const lastX = x(DATA.stocks[SERIES[0].t].series.at(-1).date);
+  const tagX = Math.max(lastX + 60, M.l + pw - 8); // 資料尚未抵達的右側空白區
+  add(svg, "line", { x1: M.l, x2: M.l + pw, y1: y(100), y2: y(100), stroke: cssVar("--baseline"), "stroke-width": 1 });
+  let tx = add(svg, "text", { x: Math.min(tagX, M.l + pw - 8), y: y(100) - 6, "text-anchor": "end", "font-size": 11, fill: cssVar("--text-secondary") });
+  tx.textContent = isNarrow ? "進場價 100%" : "進場價 100%（提前出場觀察價）";
+  add(svg, "line", { x1: M.l, x2: M.l + pw, y1: y(65), y2: y(65), stroke: cssVar("--status-critical"), "stroke-width": 1 });
+  tx = add(svg, "text", { x: Math.min(tagX, M.l + pw - 8), y: y(65) - 6, "text-anchor": "end", "font-size": 11, fill: cssVar("--status-critical") });
+  tx.textContent = isNarrow ? "下限價 65%" : "下限價 65%（下檔保護）";
+
+  /* 橫軸：月刻度 */
+  let months = ["2026-04-01","2026-05-01","2026-06-01","2026-07-01","2026-08-01","2026-09-01","2026-10-01","2026-11-01"];
+  if (isNarrow) months = months.filter((_, i) => i % 2 === 0);
+  months.forEach(m => {
+    const xx = x(m);
+    add(svg, "line", { x1: xx, x2: xx, y1: M.t + ph, y2: M.t + ph + 4, stroke: cssVar("--baseline"), "stroke-width": 1 });
+    const lb = add(svg, "text", { x: xx, y: M.t + ph + 18, "text-anchor": "middle", "font-size": 11, fill: cssVar("--text-muted") });
+    lb.textContent = parseInt(m.slice(5, 7), 10) + "月";
+  });
+  add(svg, "line", { x1: M.l, x2: M.l + pw, y1: M.t + ph, y2: M.t + ph, stroke: cssVar("--baseline"), "stroke-width": 1 });
+  /* 到期日刻度 */
+  const mx = x(DATA.maturity_date);
+  add(svg, "line", { x1: mx, x2: mx, y1: M.t, y2: M.t + ph, stroke: cssVar("--grid"), "stroke-width": 1 });
+  tx = add(svg, "text", { x: mx - 4, y: M.t + 12, "text-anchor": "end", "font-size": 11, fill: cssVar("--text-muted") });
+  tx.textContent = "11/27 到期";
+
+  /* 最新資料日虛擬游標基準 */
+  const dates = DATA.stocks[SERIES[0].t].series.map(r => r.date);
+
+  /* 線 + 端點 + 端點標籤（碰撞閃避 + 引線） */
+  const endLabels = [];
+  SERIES.forEach(({ t, css }) => {
+    const s = DATA.stocks[t];
+    const color = cssVar(css);
+    const pts = s.series.map(r => [x(r.date), y(r.close / s.entry * 100)]);
+    const dPath = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join("");
+    add(svg, "path", { d: dPath, fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+    const [ex, ey] = pts.at(-1);
+    add(svg, "circle", { cx: ex, cy: ey, r: 6, fill: cssVar("--surface-1") }); /* 2px surface ring */
+    add(svg, "circle", { cx: ex, cy: ey, r: 4, fill: color });
+    endLabels.push({ t, color, ex, ey, pct: s.series.at(-1).close / s.entry * 100, targetY: ey });
+  });
+  /* 端點標籤垂直閃避 */
+  endLabels.sort((a, b) => a.targetY - b.targetY);
+  const MIN_GAP = 16;
+  for (let i = 1; i < endLabels.length; i++) {
+    if (endLabels[i].targetY - endLabels[i - 1].targetY < MIN_GAP)
+      endLabels[i].targetY = endLabels[i - 1].targetY + MIN_GAP;
+  }
+  endLabels.forEach(L => {
+    const lx = M.l + pw + 8;
+    if (Math.abs(L.targetY - L.ey) > 2)
+      add(svg, "line", { x1: L.ex + 7, y1: L.ey, x2: lx - 2, y2: L.targetY, stroke: cssVar("--grid"), "stroke-width": 1 });
+    add(svg, "rect", { x: lx, y: L.targetY - 1.5, width: 10, height: 3, rx: 1.5, fill: L.color });
+    const lb = add(svg, "text", { x: lx + 14, y: L.targetY + 4, "font-size": isNarrow ? 10 : 11.5, fill: cssVar("--text-secondary") });
+    lb.textContent = L.t + " " + Math.round(L.pct) + "%";
+  });
+
+  /* 十字游標 */
+  const cross = add(svg, "line", { x1: 0, x2: 0, y1: M.t, y2: M.t + ph, stroke: cssVar("--baseline"), "stroke-width": 1, visibility: "hidden" });
+  const hoverDots = SERIES.map(({ css }) => {
+    const g = add(svg, "g", { visibility: "hidden" });
+    add(g, "circle", { r: 6, fill: cssVar("--surface-1") });
+    add(g, "circle", { r: 4, fill: cssVar(css) });
+    return g;
+  });
+
+  host.appendChild(svg);
+  chartState = { x, y, dates, M, pw, ph, W, H, cross, hoverDots, svg, host };
+
+  svg.addEventListener("pointermove", ev => {
+    const rect = svg.getBoundingClientRect();
+    showAt(nearestIndex(ev.clientX - rect.left));
+  });
+  svg.addEventListener("pointerleave", hideTip);
+  let kIdx = dates.length - 1;
+  host.onkeydown = ev => {
+    if (ev.key === "ArrowLeft") { kIdx = Math.max(0, kIdx - 1); showAt(kIdx); ev.preventDefault(); }
+    else if (ev.key === "ArrowRight") { kIdx = Math.min(dates.length - 1, kIdx + 1); showAt(kIdx); ev.preventDefault(); }
+    else if (ev.key === "Escape") hideTip();
+  };
+
+  renderLegend();
+}
+
+function nearestIndex(px) {
+  const { x, dates } = chartState;
+  let best = 0, bd = Infinity;
+  dates.forEach((d, i) => { const dd = Math.abs(x(d) - px); if (dd < bd) { bd = dd; best = i; } });
+  return best;
+}
+
+function showAt(i) {
+  const { x, y, dates, cross, hoverDots, M, ph, W } = chartState;
+  const d = dates[i];
+  const xx = x(d);
+  cross.setAttribute("x1", xx); cross.setAttribute("x2", xx);
+  cross.setAttribute("visibility", "visible");
+
+  const tip = document.getElementById("tooltip");
+  tip.textContent = "";
+  tip.appendChild(el("div", "t-date", d));
+  const rows = SERIES.map(({ t, css }, si) => {
+    const s = DATA.stocks[t];
+    const r = s.series.find(v => v.date === d);
+    if (r) {
+      const pct = r.close / s.entry * 100;
+      hoverDots[si].setAttribute("transform", `translate(${xx},${y(pct)})`);
+      hoverDots[si].setAttribute("visibility", "visible");
+      return { t, css, close: r.close, pct };
+    }
+    hoverDots[si].setAttribute("visibility", "hidden");
+    return null;
+  }).filter(Boolean).sort((a, b) => b.pct - a.pct);
+  rows.forEach(r => {
+    const row = el("div", "t-row");
+    const k = el("span", "t-key"); k.style.background = cssVar(r.css);
+    row.appendChild(k);
+    row.appendChild(el("span", "t-name", r.t));
+    const v = el("span", "t-val", fmt2(r.close) + " ");
+    v.appendChild(el("span", "t-pct", "(" + Math.round(r.pct) + "%)"));
+    row.appendChild(v);
+    tip.appendChild(row);
+  });
+  tip.style.display = "block";
+  const wrap = chartState.host.parentElement.getBoundingClientRect();
+  const tw = tip.offsetWidth;
+  let left = xx + 14;
+  if (left + tw > wrap.width - 4) left = xx - tw - 14;
+  tip.style.left = Math.max(4, left) + "px";
+  tip.style.top = (M.t + 8) + "px";
+}
+
+function hideTip() {
+  document.getElementById("tooltip").style.display = "none";
+  chartState.cross.setAttribute("visibility", "hidden");
+  chartState.hoverDots.forEach(g => g.setAttribute("visibility", "hidden"));
+}
+
+function renderLegend() {
+  const lg = document.getElementById("legend");
+  lg.textContent = "";
+  SERIES.forEach(({ t, css }) => {
+    const it = el("span", "item");
+    const k = el("span", "key"); k.style.background = cssVar(css);
+    it.appendChild(k);
+    it.appendChild(document.createTextNode(t + " 進場 " + fmt2(DATA.stocks[t].entry) + " / 下限 " + fmt2(DATA.stocks[t].barrier)));
+    lg.appendChild(it);
+  });
+  const r1 = el("span", "item"); r1.appendChild(el("span", "refkey crit")); r1.appendChild(document.createTextNode("下限價 65%"));
+  const r2 = el("span", "item"); r2.appendChild(el("span", "refkey")); r2.appendChild(document.createTextNode("進場價 100%"));
+  lg.appendChild(r1); lg.appendChild(r2);
+}
+
+/* ---------- 跌破紀錄 ---------- */
+function renderBreaches() {
+  const area = document.getElementById("breach-area");
+  area.textContent = "";
+  const rows = [];
+  SERIES.forEach(({ t, css }) => {
+    DATA.stocks[t].close_breaches.forEach(b => rows.push({ t, css, ...b, barrier: DATA.stocks[t].barrier }));
+  });
+  rows.sort((a, b) => a.date.localeCompare(b.date) || a.t.localeCompare(b.t));
+
+  if (rows.length === 0) {
+    const es = el("div", "empty-state");
+    es.appendChild(el("div", "big", "✓ 尚無跌破紀錄"));
+    es.appendChild(el("div", null, "截至 " + latestDate() + "，四檔收盤價皆未曾跌破下限價。"));
+    area.appendChild(es);
+  } else {
+    const tbl = el("table");
+    const thead = el("thead"); const tr = el("tr");
+    ["日期", "標的", "收盤價", "下限價", "低於下限"].forEach(h => tr.appendChild(el("th", null, h)));
+    thead.appendChild(tr); tbl.appendChild(thead);
+    const tb = el("tbody");
+    rows.forEach(r => {
+      const tr2 = el("tr");
+      tr2.appendChild(el("td", null, r.date));
+      const nm = el("td", "name");
+      const kd = el("span", "key-dot"); kd.style.background = cssVar(r.css);
+      nm.appendChild(kd); nm.appendChild(document.createTextNode(r.t));
+      tr2.appendChild(nm);
+      tr2.appendChild(el("td", null, fmt2(r.close)));
+      tr2.appendChild(el("td", null, fmt2(r.barrier)));
+      const pc = el("td", null, "−" + fmt2(r.pct_below) + "%");
+      pc.style.color = cssVar("--status-critical"); pc.style.fontWeight = "650";
+      tr2.appendChild(pc);
+      tb.appendChild(tr2);
+    });
+    tbl.appendChild(tb);
+    const sc = el("div", "scroll-x"); sc.appendChild(tbl); area.appendChild(sc);
+  }
+
+  const intr = [];
+  SERIES.forEach(({ t }) => DATA.stocks[t].intraday_breaches.forEach(b => intr.push(t + " " + b.date + "（低點 " + fmt2(b.low) + "，收盤收回 " + fmt2(b.close) + "）")));
+  document.getElementById("intraday-note").textContent = intr.length
+    ? "盤中低點曾觸及下限價但收盤收回：" + intr.join("；")
+    : "另註：期間亦無任何盤中低點觸及下限價。";
+}
+
+/* ---------- 總表 ---------- */
+function renderSummary() {
+  const tbl = document.getElementById("summary");
+  tbl.textContent = "";
+  const thead = el("thead"); const tr = el("tr");
+  ["標的", "進場價", "最新收盤", "vs 進場", "下限價", "距下限緩衝", "期間最低收盤", "收盤跌破", "含息兩平價(估)"].forEach(h => tr.appendChild(el("th", null, h)));
+  thead.appendChild(tr); tbl.appendChild(thead);
+  const tb = el("tbody");
+  SERIES.forEach(({ t, css }) => {
+    const s = DATA.stocks[t];
+    const tr2 = el("tr");
+    const nm = el("td", "name");
+    const kd = el("span", "key-dot"); kd.style.background = cssVar(css);
+    nm.appendChild(kd); nm.appendChild(document.createTextNode(t));
+    tr2.appendChild(nm);
+    tr2.appendChild(el("td", null, fmt2(s.entry)));
+    tr2.appendChild(el("td", null, fmt2(s.latest_close)));
+    const up = s.vs_entry_pct >= 0;
+    const d = el("td", null, (up ? "+" : "") + fmt1(s.vs_entry_pct) + "%");
+    d.style.color = cssVar(up ? "--delta-up" : "--delta-down"); d.style.fontWeight = "600";
+    tr2.appendChild(d);
+    tr2.appendChild(el("td", null, fmt2(s.barrier)));
+    tr2.appendChild(el("td", null, "−" + fmt1(s.buffer_to_barrier_pct) + "% 才觸及"));
+    tr2.appendChild(el("td", null, fmt2(s.min_close.close) + "（" + s.min_close.date.slice(5) + "）"));
+    tr2.appendChild(el("td", null, String(s.close_breaches.length) + " 次"));
+    tr2.appendChild(el("td", null, fmt2(s.breakeven)));
+    tb.appendChild(tr2);
+  });
+  tbl.appendChild(tb);
+}
+
+function renderDaily() {
+  const tbl = document.getElementById("daily");
+  tbl.textContent = "";
+  const thead = el("thead"); const tr = el("tr");
+  ["日期", "NVDA", "AMD", "TSLA", "META"].forEach(h => tr.appendChild(el("th", null, h)));
+  thead.appendChild(tr); tbl.appendChild(thead);
+  const tb = el("tbody");
+  const dates = DATA.stocks.NVDA.series.map(r => r.date);
+  [...dates].reverse().forEach(d => {
+    const tr2 = el("tr");
+    tr2.appendChild(el("td", null, d));
+    SERIES.forEach(({ t }) => {
+      const s = DATA.stocks[t];
+      const r = s.series.find(v => v.date === d);
+      const td = el("td", null, r ? fmt2(r.close) : "—");
+      if (r && r.close < s.barrier) { td.style.color = cssVar("--status-critical"); td.style.fontWeight = "650"; }
+      tr2.appendChild(td);
+    });
+    tb.appendChild(tr2);
+  });
+  tbl.appendChild(tb);
+}
+
+function renderTerms() {
+  const tbl = document.getElementById("terms-table");
+  tbl.textContent = "";
+  const thead = el("thead"); const tr = el("tr");
+  ["標的", "進場價", "提前出場價 100%", "執行價 65%", "下限價 65%", "含息損益兩平價(估)"].forEach(h => tr.appendChild(el("th", null, h)));
+  thead.appendChild(tr); tbl.appendChild(thead);
+  const tb = el("tbody");
+  SERIES.forEach(({ t }) => {
+    const s = DATA.stocks[t];
+    const tr2 = el("tr");
+    tr2.appendChild(el("td", "name", t));
+    [s.entry, s.entry, s.barrier, s.barrier, s.breakeven].forEach(v => tr2.appendChild(el("td", null, fmt2(v))));
+    tb.appendChild(tr2);
+  });
+  tbl.appendChild(tb);
+}
+</script>
+</body>
+</html>
