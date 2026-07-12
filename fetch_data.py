@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""FCN tech4 watchboard — 每日抓取 NVDA/AMD/TSLA/META 收盤價並產出 data.json
+"""FCN watchboard — 每日抓取 NVDA/TSM/GOOG 收盤價並產出 data.json
 
-結構型商品條件（2026-03-27 進場，2026-11-27 到期）：
-  提前出場價 (Knock-Out, KO) = 進場價 100%，滿一個月後皆曾漲過 → 提前出場
-  下限價 (Knock-In, KI)      = 進場價 65%，期間任一檔跌破 → 下檔保護失效
-  執行價 (Strike)            = 進場價 65%，到期低於執行價 → 以執行價接最差那檔
+結構型商品條件（2026-06-17 進場，2026-10-17 到期，4 個月）：
+  提前出場價 (Knock-Out, KO) = 進場價 100%，滿一個月（2026-07-17 起）皆曾漲過 → 提前出場
+  下限價 (Knock-In, KI)      = 進場價 70%，期間任一檔跌破 → 下檔保護失效
+  執行價 (Strike)            = 進場價 75.61%，到期最差標的低於執行價 → 以執行價接該檔
 跌破判定以【收盤價】為準（使用者指定）；盤中低點跌破另記為 intraday 參考。
 每次執行從進場日重抓全程歷史、全量重算，無需保存狀態。
 """
@@ -13,19 +13,20 @@ import datetime
 import time
 import urllib.request
 
-TICKERS = {"NVDA": 167.52, "AMD": 201.99, "TSLA": 361.83, "META": 525.72}
-BARRIER_RATIO = 0.65
-ENTRY_DATE = datetime.date(2026, 3, 27)
-KO_START = datetime.date(2026, 4, 27)   # 滿一個月
-MATURITY = datetime.date(2026, 11, 27)
-BREAKEVEN = {"NVDA": 97, "AMD": 117, "TSLA": 209, "META": 304}  # 含息損益兩平價(估值)
+TICKERS = {"NVDA": 204.65, "TSM": 432.15, "GOOG": 362.10}
+BARRIER_RATIO = 0.70
+STRIKE_RATIO = 0.7561
+ENTRY_DATE = datetime.date(2026, 6, 17)
+KO_START = datetime.date(2026, 7, 17)   # 滿一個月
+MATURITY = datetime.date(2026, 10, 17)
+BREAKEVEN = {"NVDA": 151, "TSM": 319, "GOOG": 267}  # 含息損益兩平價(估值)
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]
 
 
 def fetch_chart(ticker: str) -> dict:
-    p1 = int(datetime.datetime(2026, 3, 26, tzinfo=datetime.timezone.utc).timestamp())
+    p1 = int(datetime.datetime(2026, 6, 16, tzinfo=datetime.timezone.utc).timestamp())
     p2 = int(time.time())
     last_err = None
     for attempt in range(4):
@@ -70,7 +71,8 @@ def build_series(result: dict) -> list[dict]:
 
 
 def analyze(ticker: str, entry: float, rows: list[dict]) -> dict:
-    barrier = round(entry * BARRIER_RATIO, 2)
+    barrier = round(entry * BARRIER_RATIO, 4)
+    strike = round(entry * STRIKE_RATIO, 4)
     latest = rows[-1]
     min_row = min(rows, key=lambda r: r["close"])
     close_breaches = [
@@ -91,6 +93,7 @@ def analyze(ticker: str, entry: float, rows: list[dict]) -> dict:
     return {
         "entry": entry,
         "barrier": barrier,
+        "strike": strike,
         "breakeven": BREAKEVEN[ticker],
         "latest_date": latest["date"],
         "latest_close": latest["close"],
@@ -114,6 +117,7 @@ def main() -> None:
         "maturity_date": str(MATURITY),
         "ko_start_date": str(KO_START),
         "barrier_ratio": BARRIER_RATIO,
+        "strike_ratio": STRIKE_RATIO,
         "stocks": {},
     }
     for ticker, entry in TICKERS.items():
